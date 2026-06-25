@@ -138,6 +138,19 @@
                    class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-red-400">
         </div>
 
+        <div class="bg-slate-950/40 p-4 rounded-xl border border-slate-800/80 mb-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-bell text-teal-400 text-xs"></i>
+                    <span class="text-xs font-bold tracking-wider text-slate-400 uppercase">Accentuer le 1er temps (Mesure)</span>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="measure-accent-toggle" checked class="sr-only peer">
+                    <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-400 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-500 peer-checked:after:bg-slate-950"></div>
+                </label>
+            </div>
+        </div>
+
         <div class="bg-slate-950/40 p-4 rounded-xl border border-slate-800/80 mb-8">
             <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center space-x-2">
@@ -191,6 +204,7 @@
     const tapBtn = document.getElementById('tap-btn');
     const sequencerGrid = document.getElementById('sequencer-grid');
     const subSelectorBtns = document.querySelectorAll('.sub-selector-btn');
+    const measureAccentToggle = document.getElementById('measure-accent-toggle');
 
     // Éléments Speed Trainer
     const trainerToggle = document.getElementById('trainer-toggle');
@@ -220,9 +234,10 @@
     let scheduleAheadTime = 0.1;
     let timerID = null;
 
-    // Compteur de mesures pour le Speed Trainer
+    // Compteur de mesures et suivi du 1er temps
     let totalBeatsCount = 0;
     let currentMeasureCount = 0;
+    let isFirstBeatOfMeasure = true;
 
     // Initialisation & Rendu initial du séquenceur
     function renderSequencer() {
@@ -321,9 +336,14 @@
         const secondsPerBeat = 60.0 / tempo;
         nextStepTime += secondsPerBeat / subdivision;
         currentStep++;
+
         if (currentStep >= subdivision) {
             currentStep = 0;
             totalBeatsCount++;
+
+            // On détermine si le prochain temps fort entame une nouvelle mesure à 4 temps
+            isFirstBeatOfMeasure = (totalBeatsCount % 4 === 0);
+
             if (trainerToggle.checked && totalBeatsCount % 4 === 0) {
                 currentMeasureCount++;
                 const targetBars = parseInt(trainerBarsInput.value) || 4;
@@ -335,6 +355,9 @@
                     setTimeout(() => bpmDisplay.classList.remove('text-teal-400'), 500);
                 }
             }
+        } else {
+            // Sur une subdivision intermédiaire, ce n'est jamais le début d'une mesure
+            isFirstBeatOfMeasure = false;
         }
     }
 
@@ -360,13 +383,18 @@
         osc.connect(gainNode);
         gainNode.connect(audioCtx.destination);
 
-        if (stepState === 2) {
-            osc.frequency.value = 1200;
-            gainNode.gain.setValueAtTime(1.2, time);
+        // Changement de la logique de fréquence pour le premier temps fort de la mesure
+        if (stepIdx === 0 && isFirstBeatOfMeasure && measureAccentToggle.checked) {
+            osc.frequency.value = 1600; // Son cristallin et très aigu pour marquer la mesure
+            gainNode.gain.setValueAtTime(1.4, time);
+        } else if (stepState === 2) {
+            osc.frequency.value = 1100; // Son accentué classique des autres temps
+            gainNode.gain.setValueAtTime(1.1, time);
         } else {
-            osc.frequency.value = 750;
+            osc.frequency.value = 750;  // Son normal
             gainNode.gain.setValueAtTime(0.7, time);
         }
+
         gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
         osc.start(time);
         osc.stop(time + 0.04);
@@ -392,6 +420,7 @@
             currentStep = 0;
             totalBeatsCount = 0;
             currentMeasureCount = 0;
+            isFirstBeatOfMeasure = true; // Forcer la première note à être accentuée au départ
             nextStepTime = audioCtx.currentTime + 0.05;
             scheduler();
         } else {
@@ -409,7 +438,7 @@
 <script>
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js') // Sans le paramètre scope
+            navigator.serviceWorker.register('sw.js')
                 .then(reg => console.log('Service Worker enregistré !', reg))
                 .catch(err => console.log('Erreur', err));
         });
