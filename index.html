@@ -41,8 +41,14 @@
             <div id="visual-indicator" class="w-4 h-4 rounded-full bg-slate-800 border border-slate-700 transition-all duration-75 shadow-[0_0_15px_rgba(20,184,166,0)]"></div>
         </div>
 
-        <!-- Bloc principal Tempo -->
+        <!-- Bloc principal Tempo + Chrono intégré -->
         <div class="bg-slate-950/80 rounded-2xl p-4 border border-slate-800/80 mb-3 text-center relative">
+            <!-- Chrono discret en haut au centre -->
+            <div class="text-[11px] font-mono-custom text-slate-500 tracking-widest uppercase mb-1 flex items-center justify-center space-x-1">
+                <i class="fa-regular fa-clock text-teal-500/70"></i>
+                <span id="chrono-display" class="font-bold text-slate-400">00:00</span>
+            </div>
+
             <div class="flex items-center justify-center space-x-4">
                 <div class="flex flex-col space-y-1">
                     <button onclick="changeBPM(-5)" class="w-9 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700/50 text-xs font-bold text-slate-400">-5</button>
@@ -87,7 +93,7 @@
             </div>
         </div>
 
-        <!-- LIGNE COMBINÉE : DÉCOMPTE & MUTE ALÉATOIRE (Gain de place énorme !) -->
+        <!-- LIGNE COMBINÉE : DÉCOMPTE & MUTE ALÉATOIRE -->
         <div class="grid grid-cols-2 gap-3 mb-3">
             <!-- Décompte -->
             <div class="bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/80 flex flex-col justify-between">
@@ -130,7 +136,7 @@
             </div>
         </div>
 
-        <!-- Paramètres compacts du Speed Trainer (Masqués si inactif) -->
+        <!-- Paramètres compacts du Speed Trainer -->
         <div id="trainer-settings" class="grid grid-cols-2 gap-3 p-2.5 bg-slate-950/20 rounded-xl border border-slate-800/50 mb-3 transition-all duration-300 opacity-40 pointer-events-none hidden">
             <div class="flex items-center justify-between">
                 <label class="text-[10px] font-bold text-slate-500 uppercase">BPM +</label>
@@ -168,6 +174,7 @@
     const trainerSettings = document.getElementById('trainer-settings');
     const trainerStepInput = document.getElementById('trainer-step');
     const trainerBarsInput = document.getElementById('trainer-bars');
+    const chronoDisplay = document.getElementById('chrono-display');
 
     let audioCtx = null, isPlaying = false, tempo = 120.0, subdivision = 1, muteChance = 0;
     let countInBarsSetting = 0, countInBeatsRemaining = 0, isCountingIn = false;
@@ -175,6 +182,9 @@
     let currentStep = 0, nextStepTime = 0.0, lookahead = 25.0, scheduleAheadTime = 0.1, timerID = null;
     let totalBeatsCount = 0, currentMeasureCount = 0, isFirstBeatOfMeasure = true;
     let wakeLock = null;
+
+    // Variables du Chrono
+    let chronoTimerID = null, chronoStartTime = 0, elapsedSeconds = 0;
 
     countinBtns.forEach(btn => {
         btn.addEventListener('click', () => {
@@ -257,6 +267,30 @@
         }
     });
 
+    // Fonctions de gestion du chrono
+    function startChrono() {
+        if (chronoTimerID) clearInterval(chronoTimerID);
+        chronoStartTime = Date.now();
+        chronoDisplay.classList.remove('text-slate-400');
+        chronoDisplay.classList.add('text-teal-400');
+        chronoTimerID = setInterval(updateChrono, 1000);
+    }
+
+    function updateChrono() {
+        const totalSeconds = Math.floor((Date.now() - chronoStartTime) / 1000);
+        const mins = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+        const secs = (totalSeconds % 60).toString().padStart(2, '0');
+        chronoDisplay.textContent = `${mins}:${secs}`;
+    }
+
+    function resetChrono() {
+        if (chronoTimerID) clearInterval(chronoTimerID);
+        chronoTimerID = null;
+        chronoDisplay.textContent = "00:00";
+        chronoDisplay.classList.remove('text-teal-400');
+        chronoDisplay.classList.add('text-slate-400');
+    }
+
     function nextNote() {
         const secondsPerBeat = 60.0 / tempo;
         if (isCountingIn) {
@@ -266,7 +300,13 @@
             if (countInBeatsRemaining <= 0) {
                 isCountingIn = false;
                 currentStep = 0; totalBeatsCount = 0; currentMeasureCount = 0; isFirstBeatOfMeasure = true;
-                setTimeout(() => { if (isPlaying) { playText.textContent = 'ARRÊTER'; playBtn.className = 'w-full py-3.5 rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 text-white font-bold text-base tracking-wider flex items-center justify-center space-x-2 shadow-xl'; } }, 0);
+                setTimeout(() => {
+                    if (isPlaying) {
+                        playText.textContent = 'ARRÊTER';
+                        playBtn.className = 'w-full py-3.5 rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 text-white font-bold text-base tracking-wider flex items-center justify-center space-x-2 shadow-xl';
+                        startChrono(); // Lancement du chrono après le décompte
+                    }
+                }, 0);
             }
             return;
         }
@@ -336,6 +376,7 @@
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (!isPlaying) {
             isPlaying = true;
+            resetChrono(); // Sécurité réinitialisation
             if (countInBarsSetting > 0) {
                 isCountingIn = true; countInBeatsRemaining = countInBarsSetting * 4;
                 playText.textContent = `DÉCOMPTE... ${countInBeatsRemaining}`;
@@ -345,6 +386,7 @@
                 isCountingIn = false; playText.textContent = 'ARRÊTER';
                 playBtn.className = 'w-full py-3.5 rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 text-white font-bold text-base tracking-wider flex items-center justify-center space-x-2 shadow-xl';
                 playIcon.className = 'fa-solid fa-stop text-base';
+                startChrono(); // Pas de décompte -> Lance le chrono direct
             }
             currentStep = 0; totalBeatsCount = 0; currentMeasureCount = 0; isFirstBeatOfMeasure = true;
             nextStepTime = audioCtx.currentTime + 0.05;
@@ -354,6 +396,7 @@
             playIcon.className = 'fa-solid fa-play text-base';
             playBtn.className = 'w-full py-3.5 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-400 text-slate-950 font-bold text-base tracking-wider flex items-center justify-center space-x-2 shadow-xl';
             clearTimeout(timerID); releaseWakeLock();
+            resetChrono(); // Arrêt du métronome -> Reset du chrono
         }
     }
 
