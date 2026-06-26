@@ -23,6 +23,14 @@
         .font-mono-custom {
             font-family: 'Share Tech Tech', 'Share Tech Mono', monospace;
         }
+
+        @keyframes pulse-fast {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .animate-pulse-fast {
+            animation: pulse-fast 0.6s infinite;
+        }
     </style>
 </head>
 <body class="bg-slate-950 text-slate-100 h-full flex flex-col justify-between selection:bg-teal-500 selection:text-slate-950">
@@ -151,7 +159,7 @@
             </div>
         </div>
 
-        <div class="bg-slate-950/40 p-4 rounded-xl border border-slate-800/80 mb-8">
+        <div class="bg-slate-950/40 p-4 rounded-xl border border-slate-800/80 mb-6">
             <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center space-x-2">
                     <i class="fa-solid fa-gauge-high text-teal-400 text-xs"></i>
@@ -183,6 +191,28 @@
             </div>
         </div>
 
+        <div class="bg-slate-950/40 p-4 rounded-xl border border-slate-800/80 mb-8">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-hourglass-start text-teal-400 text-xs"></i>
+                    <span class="text-xs font-bold tracking-wider text-slate-400 uppercase">Décompte avant départ</span>
+                </div>
+                <div class="flex space-x-1" id="countin-selectors">
+                    <button type="button" data-bars="0"
+                            class="countin-btn px-2.5 py-1 text-xs rounded bg-teal-500 text-slate-950 font-bold">Aucun
+                    </button>
+                    <button type="button" data-bars="1"
+                            class="countin-btn px-2.5 py-1 text-xs rounded bg-slate-800 text-slate-400 font-semibold hover:bg-slate-700">
+                        1 Mesure
+                    </button>
+                    <button type="button" data-bars="2"
+                            class="countin-btn px-2.5 py-1 text-xs rounded bg-slate-800 text-slate-400 font-semibold hover:bg-slate-700">
+                        2 Mesures
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <button id="play-btn"
                 class="w-full py-4 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-400 text-slate-950 font-bold text-lg tracking-wider hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center space-x-3 shadow-xl shadow-teal-500/10">
             <i class="fa-solid fa-play text-lg" id="play-icon"></i>
@@ -205,6 +235,7 @@
     const sequencerGrid = document.getElementById('sequencer-grid');
     const subSelectorBtns = document.querySelectorAll('.sub-selector-btn');
     const measureAccentToggle = document.getElementById('measure-accent-toggle');
+    const countinBtns = document.querySelectorAll('.countin-btn');
 
     // Éléments Speed Trainer
     const trainerToggle = document.getElementById('trainer-toggle');
@@ -218,6 +249,11 @@
     let tempo = 120.0;
     let subdivision = 1;
     let muteChance = 0;
+
+    // Configuration du Décompte
+    let countInBarsSetting = 0; // 0, 1 ou 2 mesures
+    let countInBeatsRemaining = 0; // Nombre de temps restants dans le décompte
+    let isCountingIn = false;
 
     // Sequencer configuration
     let stepsPattern = {
@@ -241,6 +277,17 @@
 
     // Gestion de la mise en veille
     let wakeLock = null;
+
+    // Gestion des clics sur les boutons de décompte
+    countinBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            countinBtns.forEach(b => {
+                b.className = 'countin-btn px-2.5 py-1 text-xs rounded bg-slate-800 text-slate-400 font-semibold hover:bg-slate-700';
+            });
+            btn.className = 'countin-btn px-2.5 py-1 text-xs rounded bg-teal-500 text-slate-950 font-bold';
+            countInBarsSetting = parseInt(btn.dataset.bars);
+        });
+    });
 
     // Initialisation & Rendu initial du séquenceur
     function renderSequencer() {
@@ -337,6 +384,37 @@
 
     function nextNote() {
         const secondsPerBeat = 60.0 / tempo;
+
+        if (isCountingIn) {
+            // En mode décompte, on avance seulement de temps en temps (pas de subdivision)
+            nextStepTime += secondsPerBeat;
+            countInBeatsRemaining--;
+
+            // Mise à jour de l'interface du bouton pendant le décompte
+            setTimeout(() => {
+                if (isPlaying && isCountingIn) {
+                    playText.textContent = `DÉCOMPTE... ${countInBeatsRemaining}`;
+                }
+            }, 0);
+
+            if (countInBeatsRemaining <= 0) {
+                isCountingIn = false;
+                // Transition vers le vrai départ du métronome
+                currentStep = 0;
+                totalBeatsCount = 0;
+                currentMeasureCount = 0;
+                isFirstBeatOfMeasure = true;
+                setTimeout(() => {
+                    if (isPlaying) {
+                        playText.textContent = 'ARRÊTER';
+                        playBtn.classList.remove('animate-pulse-fast');
+                    }
+                }, 0);
+            }
+            return;
+        }
+
+        // Mode d'exécution normal (avec subdivisions)
         nextStepTime += secondsPerBeat / subdivision;
         currentStep++;
 
@@ -363,9 +441,9 @@
     }
 
     function scheduleNote(stepIdx, time) {
-        const stepState = stepsPattern[subdivision][stepIdx];
+        // Flash du cercle lumineux de l'interface
         setTimeout(() => {
-            if (stepIdx === 0) {
+            if (isCountingIn || stepIdx === 0) {
                 visualIndicator.className = 'w-5 h-5 rounded-full bg-teal-400 border border-teal-300 transition-all duration-75 shadow-[0_0_15px_rgba(20,184,166,0.8)] scale-110';
             } else {
                 visualIndicator.className = 'w-5 h-5 rounded-full bg-slate-400 border border-slate-300 transition-all duration-75 shadow-[0_0_10px_rgba(255,255,255,0.4)]';
@@ -375,7 +453,29 @@
             }, 50);
         }, (time - audioCtx.currentTime) * 1000);
 
-        if (stepState === 0) return;
+        // Si on est en décompte, on joue un son standard fixe à chaque temps
+        if (isCountingIn) {
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            // Premier temps du décompte un peu plus aigu pour donner le repère
+            if (countInBeatsRemaining === (countInBarsSetting * 4)) {
+                osc.frequency.value = 1200;
+            } else {
+                osc.frequency.value = 850;
+            }
+
+            gainNode.gain.setValueAtTime(1.0, time);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
+            osc.start(time);
+            osc.stop(time + 0.04);
+            return;
+        }
+
+        // Comportement normal du séquenceur
+        if (stepsPattern[subdivision][stepIdx] === 0) return;
         const rollDice = Math.random() * 100;
         if (rollDice < muteChance) return;
 
@@ -387,7 +487,7 @@
         if (stepIdx === 0 && isFirstBeatOfMeasure && measureAccentToggle.checked) {
             osc.frequency.value = 1600;
             gainNode.gain.setValueAtTime(1.4, time);
-        } else if (stepState === 2) {
+        } else if (stepsPattern[subdivision][stepIdx] === 2) {
             osc.frequency.value = 1100;
             gainNode.gain.setValueAtTime(1.1, time);
         } else {
@@ -402,7 +502,8 @@
 
     function scheduler() {
         while (nextStepTime < audioCtx.currentTime + scheduleAheadTime) {
-            scheduleNote(currentStep, nextStepTime);
+            // En décompte, l'index du pas n'a pas d'importance pour le séquenceur
+            scheduleNote(isCountingIn ? 0 : currentStep, nextStepTime);
             nextNote();
         }
         timerID = setTimeout(scheduler, lookahead);
@@ -436,29 +537,43 @@
         }
         if (!isPlaying) {
             isPlaying = true;
-            playText.textContent = 'ARRÊTER';
-            playIcon.className = 'fa-solid fa-stop text-lg';
-            playBtn.className = 'w-full py-4 rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 text-white font-bold text-lg tracking-wider hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center space-x-3 shadow-xl shadow-red-500/10';
+
+            // Vérification si un décompte est demandé (4 temps par mesure)
+            if (countInBarsSetting > 0) {
+                isCountingIn = true;
+                countInBeatsRemaining = countInBarsSetting * 4;
+                playText.textContent = `DÉCOMPTE... ${countInBeatsRemaining}`;
+                playBtn.className = 'w-full py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold text-lg tracking-wider hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center space-x-3 shadow-xl shadow-amber-500/10 animate-pulse-fast';
+                playIcon.className = 'fa-solid fa-hourglass-half text-lg';
+            } else {
+                isCountingIn = false;
+                playText.textContent = 'ARRÊTER';
+                playBtn.className = 'w-full py-4 rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 text-white font-bold text-lg tracking-wider hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center space-x-3 shadow-xl shadow-red-500/10';
+                playIcon.className = 'fa-solid fa-stop text-lg';
+            }
+
             currentStep = 0;
             totalBeatsCount = 0;
             currentMeasureCount = 0;
             isFirstBeatOfMeasure = true;
             nextStepTime = audioCtx.currentTime + 0.05;
+
             scheduler();
-            requestWakeLock(); // Active le verrou d'écran au démarrage
+            requestWakeLock();
         } else {
             isPlaying = false;
+            isCountingIn = false;
             playText.textContent = 'DÉMARRER';
             playIcon.className = 'fa-solid fa-play text-lg';
             playBtn.className = 'w-full py-4 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-400 text-slate-950 font-bold text-lg tracking-wider hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center space-x-3 shadow-xl shadow-teal-500/10';
+            playBtn.classList.remove('animate-pulse-fast');
             clearTimeout(timerID);
-            releaseWakeLock(); // Relâche l'écran à l'arrêt
+            releaseWakeLock();
         }
     }
 
     playBtn.addEventListener('click', toggleMetronome);
 
-    // Réactivation si l'utilisateur change d'application et revient dessus
     document.addEventListener('visibilitychange', async () => {
         if (wakeLock !== null && document.visibilityState === 'visible' && isPlaying) {
             await requestWakeLock();
